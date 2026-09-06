@@ -1,122 +1,221 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
 from datetime import datetime
 
 # Page Configuration
-st.set_page_config(page_title="AMG Steel Factory - Inventory System", layout="wide")
+st.set_page_config(page_title="AMG Steel Factory - Multi-Item Inventory System", layout="wide")
 
 st.title("🏭 AMG STEEL FACTORY")
-st.subheader("Inventory Control & Stock Card Management System")
+st.subheader("Inventory Control & Multi-Item Stock Card Management System")
 
-# Initialize Session State for Data Persistence
-if 'stock_data' not in st.session_state:
-    st.session_state.stock_data = pd.DataFrame(columns=[
-        'Date', 'Ref No', 'Qty In', 'Qty Out', 'Balance Qty', 
-        'Value In (ETB)', 'Value Out (ETB)', 'Balance Value (ETB)', 'Unit Cost (ETB)'
-    ])
+# --- DATABASE SETUP ---
+DB_NAME = "inventory.db"
 
-if 'item_info' not in st.session_state:
-    st.session_state.item_info = {
-        'group': '', 'name': '', 'sn': '', 'code': '', 
-        'location': '', 'um': '', 'max_level': 0, 'min_level': 0
-    }
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    # Table for storing items
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS items (
+            item_code TEXT PRIMARY KEY,
+            item_name TEXT,
+            item_group TEXT,
+            sn TEXT,
+            location TEXT,
+            um TEXT,
+            max_level REAL,
+            min_level REAL
+        )
+    ''')
+    # Table for storing transactions
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_code TEXT,
+            trans_date TEXT,
+            ref_no TEXT,
+            trans_type TEXT,
+            qty REAL,
+            unit_cost REAL,
+            qty_in REAL,
+            qty_out REAL,
+            balance_qty REAL,
+            val_in REAL,
+            val_out REAL,
+            balance_val REAL,
+            FOREIGN KEY (item_code) REFERENCES items (item_code)
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-# --- SECTION 1: Item Header Details ---
-st.markdown("### 📋 Item Information")
-col1, col2 = st.columns(2)
+init_db()
 
-with col1:
-    group = st.text_input("Item Group", value=st.session_state.item_info['group'])
-    sn = st.text_input("Serial Number (SN)", value=st.session_state.item_info['sn'])
-    location = st.text_input("Location", value=st.session_state.item_info['location'])
-    max_level = st.number_input("Max. Stock Level", min_value=0, value=st.session_state.item_info['max_level'])
+# --- HELPER FUNCTIONS ---
+def get_items():
+    conn = sqlite3.connect(DB_NAME)
+    df = pd.read_sql_query("SELECT * FROM items", conn)
+    conn.close()
+    return df
 
-with col2:
-    name = st.text_input("Item Name", value=st.session_state.item_info['name'])
-    code = st.text_input("Item Code", value=st.session_state.item_info['code'])
-    um = st.text_input("Unit of Measurement (UM)", value=st.session_state.item_info['um'])
-    min_level = st.number_input("Minimum Stock Level", min_value=0, value=st.session_state.item_info['min_level'])
+def get_item_transactions(item_code):
+    conn = sqlite3.connect(DB_NAME)
+    df = pd.read_sql_query("SELECT trans_date AS Date, ref_no AS 'Ref No', qty_in AS 'Qty In', qty_out AS 'Qty Out', balance_qty AS 'Balance Qty', val_in AS 'Value In (ETB)', val_out AS 'Value Out (ETB)', balance_val AS 'Balance Value (ETB)', unit_cost AS 'Unit Cost (ETB)' FROM transactions WHERE item_code = ? ORDER BY id ASC", conn, params=(item_code,))
+    conn.close()
+    return df
 
-# --- SECTION 2: Transaction Entry Form ---
-st.markdown("---")
-st.markdown("### 📥📤 Stock Transaction Entry")
+# Sidebar Navigation
+st.sidebar.title("📌 Navigation")
+page = st.sidebar.radio("Go to", ["📦 Add New Item", "📥📤 Add Transaction (In/Out)", "📊 View Stock Cards"])
 
-with st.form(key='transaction_form'):
-    f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+# ==========================================
+# PAGE 1: ADD NEW ITEM
+# ==========================================
+if page == "📦 Add New Item":
+    st.markdown("### 📦 Register a New Item")
+    with st.form("new_item_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            item_code = st.text_input("Item Code (Unique ID)*")
+            item_name = st.text_input("Item Name*")
+            item_group = st.text_input("Item Group")
+            sn = st.text_input("Serial Number (SN)")
+        with col2:
+            location = st.text_input("Location in Store")
+            um = st.text_input("Unit of Measurement (UM)")
+            max_level = st.number_input("Max Stock Level", min_value=0.0, value=0.0)
+            min_level = st.number_input("Min Stock Level", min_value=0.0, value=0.0)
+            
+        submit_item = st.form_submit_button("Save Item")
+        
+    if submit_item:
+        if not item_code or not item_name:
+            st.error("Please fill in required fields: Item Code and Item Name!")
+        else:
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            try:
+                c.execute("""
+                    INSERT INTO items (item_code, item_name, item_group, sn, location, um, max_level, min_level)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (item_code, item_name, item_group, sn, location, um, max_level, min_level))
+                conn.commit()
+                st.success(f"Item '{item_name}' registered successfully!")
+            except sqlite3.IntegrityError:
+                st.error("Error: An item with this Item Code already exists!")
+            finally:
+                conn.close()
+
+    st.markdown("---")
+    st.markdown("### 📋 Existing Registered Items")
+    items_df = get_items()
+    st.dataframe(items_df, use_container_width=True)
+
+# ==========================================
+# PAGE 2: ADD TRANSACTION
+# ==========================================
+elif page == "📥📤 Add Transaction (In/Out)":
+    st.markdown("### 📥📤 Record Stock Movement (In / Out)")
+    items_df = get_items()
     
-    with f_col1:
-        trans_date = st.date_input("Date", datetime.now())
-        ref_no = st.text_input("Ref. No")
-        
-    with f_col2:
-        unit_cost = st.number_input("Unit Cost (ETB)", min_value=0.0, step=0.01)
-        trans_type = st.radio("Transaction Type", ["In", "Out"])
-        
-    with f_col3:
-        qty = st.number_input("Quantity", min_value=0, step=1)
-        
-    with f_col4:
-        st.write("") # Formatting Spacer
-        st.write("")
-        submit_button = st.form_submit_button(label='Add Transaction')
-
-# Processing Transaction Logic
-if submit_button:
-    # Get previous balance
-    if not st.session_state.stock_data.empty:
-        prev_balance_qty = st.session_state.stock_data.iloc[-1]['Balance Qty']
+    if items_df.empty:
+        st.warning("No items found. Please add an item first from 'Add New Item' page.")
     else:
-        prev_balance_qty = 0
+        # Item selector dropdown
+        item_list = [f"{row['item_code']} - {row['item_name']}" for _, row in items_df.iterrows()]
+        selected_item_str = st.selectbox("Select Item", item_list)
+        selected_code = selected_item_str.split(" - ")[0]
+        
+        # Fetch selected item details
+        item_data = items_df[items_df['item_code'] == selected_code].iloc[0]
+        
+        st.info(f"📍 Location: {item_data['location']} | UM: {item_data['um']} | Min Level: {item_data['min_level']} | Max Level: {item_data['max_level']}")
 
-    if trans_type == "In":
-        qty_in = qty
-        qty_out = 0
-        new_balance_qty = prev_balance_qty + qty_in
-    else:
-        qty_in = 0
-        qty_out = qty
-        new_balance_qty = prev_balance_qty - qty_out
+        with st.form("transaction_form"):
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                trans_date = st.date_input("Date", datetime.now())
+                ref_no = st.text_input("Ref / Voucher No")
+            with c2:
+                trans_type = st.radio("Type", ["In", "Out"])
+                unit_cost = st.number_input("Unit Cost (ETB)", min_value=0.0, step=0.01)
+            with c3:
+                qty = st.number_input("Quantity", min_value=0.0, step=1.0)
+            with c4:
+                st.write("")
+                st.write("")
+                submit_trans = st.form_submit_button("Record Transaction")
 
-    val_in = qty_in * unit_cost
-    val_out = qty_out * unit_cost
-    val_balance = new_balance_qty * unit_cost
+        if submit_trans:
+            # Get last balance
+            trans_df = get_item_transactions(selected_code)
+            prev_balance_qty = trans_df.iloc[-1]['Balance Qty'] if not trans_df.empty else 0.0
 
-    # Append transaction record
-    new_row = {
-        'Date': trans_date.strftime('%Y-%m-%d'),
-        'Ref No': ref_no,
-        'Qty In': qty_in,
-        'Qty Out': qty_out,
-        'Balance Qty': new_balance_qty,
-        'Value In (ETB)': val_in,
-        'Value Out (ETB)': val_out,
-        'Balance Value (ETB)': val_balance,
-        'Unit Cost (ETB)': unit_cost
-    }
+            if trans_type == "In":
+                qty_in = qty
+                qty_out = 0.0
+                new_balance_qty = prev_balance_qty + qty_in
+            else:
+                qty_in = 0.0
+                qty_out = qty
+                new_balance_qty = prev_balance_qty - qty_out
+
+            val_in = qty_in * unit_cost
+            val_out = qty_out * unit_cost
+            val_balance = new_balance_qty * unit_cost
+
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO transactions 
+                (item_code, trans_date, ref_no, trans_type, qty, unit_cost, qty_in, qty_out, balance_qty, val_in, val_out, balance_val)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (selected_code, trans_date.strftime('%Y-%m-%d'), ref_no, trans_type, qty, unit_cost, qty_in, qty_out, new_balance_qty, val_in, val_out, val_balance))
+            conn.commit()
+            conn.close()
+            st.success("Transaction recorded successfully!")
+
+# ==========================================
+# PAGE 3: VIEW STOCK CARDS
+# ==========================================
+elif page == "📊 View Stock Cards":
+    st.markdown("### 📊 Stock Card Ledger by Item")
+    items_df = get_items()
     
-    st.session_state.stock_data = pd.concat([st.session_state.stock_data, pd.DataFrame([new_row])], ignore_index=True)
-    st.success("Transaction recorded successfully!")
+    if items_df.empty:
+        st.warning("No items registered yet.")
+    else:
+        item_list = [f"{row['item_code']} - {row['item_name']}" for _, row in items_df.iterrows()]
+        selected_item_str = st.selectbox("Select Item to View Stock Card", item_list)
+        selected_code = selected_item_str.split(" - ")[0]
+        
+        item_data = items_df[items_df['item_code'] == selected_code].iloc[0]
+        
+        # Display Item Header
+        st.markdown(f"""
+        **Item Code:** {item_data['item_code']} | **Item Name:** {item_data['item_name']} | **Group:** {item_data['item_group']}  
+        **SN:** {item_data['sn']} | **Location:** {item_data['location']} | **UM:** {item_data['um']}  
+        **Min Level:** {item_data['min_level']} | **Max Level:** {item_data['max_level']}
+        """)
+        
+        trans_df = get_item_transactions(selected_code)
+        
+        # Low/High Stock Alerts
+        if not trans_df.empty:
+            current_stock = trans_df.iloc[-1]['Balance Qty']
+            if item_data['min_level'] > 0 and current_stock <= item_data['min_level']:
+                st.warning(f"⚠️ **ALERT:** Stock level is below minimum threshold! Current Stock: {current_stock}")
+            elif item_data['max_level'] > 0 and current_stock >= item_data['max_level']:
+                st.info(f"ℹ️ **NOTICE:** Stock level has reached maximum threshold. Current Stock: {current_stock}")
 
-# --- SECTION 3: Stock Card Table & Data Visualizer ---
-st.markdown("---")
-st.markdown("### 📊 Stock Card Ledger")
-
-# Low/High Stock Inventory Alerts
-if not st.session_state.stock_data.empty:
-    current_stock = st.session_state.stock_data.iloc[-1]['Balance Qty']
-    if min_level > 0 and current_stock <= min_level:
-        st.warning(f"⚠️ **ALERT:** Stock level is at or below the Minimum Stock Threshold! (Current: {current_stock} | Min: {min_level})")
-    elif max_level > 0 and current_stock >= max_level:
-        st.info(f"ℹ️ **NOTICE:** Stock level has reached or exceeded the Maximum Limit. (Current: {current_stock} | Max: {max_level})")
-
-st.dataframe(st.session_state.stock_data, use_container_width=True)
-
-# Export Data Option
-if not st.session_state.stock_data.empty:
-    csv = st.session_state.stock_data.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Export Ledger to Excel/CSV",
-        data=csv,
-        file_name=f"Stock_Card_{code if code else 'Report'}.csv",
-        mime='text/csv',
-    )
+        st.dataframe(trans_df, use_container_width=True)
+        
+        if not trans_df.empty:
+            csv = trans_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export This Item's Ledger to Excel/CSV",
+                data=csv,
+                file_name=f"Stock_Card_{selected_code}.csv",
+                mime='text/csv'
+            )

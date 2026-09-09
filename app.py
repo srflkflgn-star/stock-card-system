@@ -33,11 +33,11 @@ def load_transactions(item_code):
         if df.empty:
             return df
 
-        # Clean numerical values (replace None/blank/text with 0)
+        # Clean numerical values
         df['qty_in'] = pd.to_numeric(df['qty_in'], errors='coerce').fillna(0)
         df['qty_out'] = pd.to_numeric(df['qty_out'], errors='coerce').fillna(0)
         
-        # Calculate running balance automatically in memory (does not overwrite Google Sheet)
+        # Calculate balance automatically (Cumulative Balance)
         df['balance_qty'] = (df['qty_in'] - df['qty_out']).cumsum()
         
         return df
@@ -52,6 +52,9 @@ if page == "📦 View Registered Items":
     st.markdown("### 📦 Registered Items List")
     items_df = load_items()
     st.dataframe(items_df, use_container_width=True)
+    
+    # ሰማያዊው ማስታወሻና የ Google Sheet ሊንክ
+    st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ ወይም ለማስተካከል በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
 
 elif page == "📊 View Stock Cards":
     st.markdown("### 📊 Stock Card Ledger by Item")
@@ -75,3 +78,6 @@ elif page == "📊 View Stock Cards":
             st.success(f"📦 **Current Stock Balance for {selected_code}: {current_balance}**")
         else:
             st.info("No transaction records found for this item.")
+            
+    # ሰማያዊው ማስታወሻና የ Google Sheet ሊንክ
+    st.info("💡 **ማስታወሻ:** ገቢና ወጪ መረጃ ለመጻፍ በቀጥታ [Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")

@@ -20,15 +20,15 @@ def load_items():
     except Exception:
         return pd.DataFrame()
 
-def load_transactions(item_code):
+def load_transactions(item_code=None):
     try:
         df = pd.read_csv(TRANS_URL)
         df = df.dropna(how="all")
         df.columns = [str(col).strip().lower() for col in df.columns]
         
-        # Filter by selected item code
-        code_col = [c for c in df.columns if 'code' in c or 'item' in c][0]
-        df = df[df[code_col].astype(str) == str(item_code)].copy()
+        if item_code and not df.empty:
+            code_col = [c for c in df.columns if 'code' in c or 'item' in c][0]
+            df = df[df[code_col].astype(str) == str(item_code)].copy()
         
         if df.empty:
             return df
@@ -41,21 +41,39 @@ def load_transactions(item_code):
         df['balance_qty'] = (df['qty_in'] - df['qty_out']).cumsum()
         
         return df
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 # Navigation
 st.sidebar.title("📌 Navigation")
-page = st.sidebar.radio("Go to", ["📦 View Registered Items", "📊 View Stock Cards"])
+page = st.sidebar.radio("Go to", [
+    "📦 View Registered Items", 
+    "📥📤 Record Stock Movement (In/Out)", 
+    "📊 View Stock Cards"
+])
 
+# ==========================================
+# PAGE 1: VIEW REGISTERED ITEMS
+# ==========================================
 if page == "📦 View Registered Items":
     st.markdown("### 📦 Registered Items List")
     items_df = load_items()
     st.dataframe(items_df, use_container_width=True)
     
-    # ሰማያዊው ማስታወሻና የ Google Sheet ሊንክ
-    st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ ወይም ለማስተካከል በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
+    st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
 
+# ==========================================
+# PAGE 2: RECORD MOVEMENT DETAILS
+# ==========================================
+elif page == "📥📤 Record Stock Movement (In/Out)":
+    st.markdown("### 📥📤 Stock Movement Helper")
+    st.write("አዲስ ገቢ ወይም ወጪ ለመመዝገብ ከታች ያለውን ሰማያዊ ሊንክ ተጭነው በቀጥታ ወደ Google Sheet ይሂዱ፦")
+    
+    st.info("🔗 [በቀጥታ ወደ Google Sheet ለመሄድና ገቢ/ወጪ ለመጻፍ እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit#gid=0)")
+
+# ==========================================
+# PAGE 3: VIEW STOCK CARDS
+# ==========================================
 elif page == "📊 View Stock Cards":
     st.markdown("### 📊 Stock Card Ledger by Item")
     items_df = load_items()
@@ -79,5 +97,4 @@ elif page == "📊 View Stock Cards":
         else:
             st.info("No transaction records found for this item.")
             
-    # ሰማያዊው ማስታወሻና የ Google Sheet ሊንክ
     st.info("💡 **ማስታወሻ:** ገቢና ወጪ መረጃ ለመጻፍ በቀጥታ [Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")

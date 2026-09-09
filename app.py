@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="AMG Steel Factory - Inventory", layout="wide")
 
@@ -33,11 +34,8 @@ def load_transactions(item_code=None):
         if df.empty:
             return df
 
-        # Clean numerical values
         df['qty_in'] = pd.to_numeric(df['qty_in'], errors='coerce').fillna(0)
         df['qty_out'] = pd.to_numeric(df['qty_out'], errors='coerce').fillna(0)
-        
-        # Calculate balance automatically (Cumulative Balance)
         df['balance_qty'] = (df['qty_in'] - df['qty_out']).cumsum()
         
         return df
@@ -52,28 +50,18 @@ page = st.sidebar.radio("Go to", [
     "📊 View Stock Cards"
 ])
 
-# ==========================================
-# PAGE 1: VIEW REGISTERED ITEMS
-# ==========================================
 if page == "📦 View Registered Items":
     st.markdown("### 📦 Registered Items List")
     items_df = load_items()
     st.dataframe(items_df, use_container_width=True)
     
-    st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
+    # Print Button Hack
+    components.html("<button onclick='window.print()' style='background-color:#008CBA; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print This Page</button>", height=50)
 
-# ==========================================
-# PAGE 2: RECORD MOVEMENT DETAILS
-# ==========================================
 elif page == "📥📤 Record Stock Movement (In/Out)":
     st.markdown("### 📥📤 Stock Movement Helper")
-    st.write("አዲስ ገቢ ወይም ወጪ ለመመዝገብ ከታች ያለውን ሰማያዊ ሊንክ ተጭነው በቀጥታ ወደ Google Sheet ይሂዱ፦")
-    
     st.info("🔗 [በቀጥታ ወደ Google Sheet ለመሄድና ገቢ/ወጪ ለመጻፍ እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit#gid=0)")
 
-# ==========================================
-# PAGE 3: VIEW STOCK CARDS
-# ==========================================
 elif page == "📊 View Stock Cards":
     st.markdown("### 📊 Stock Card Ledger by Item")
     items_df = load_items()
@@ -94,7 +82,13 @@ elif page == "📊 View Stock Cards":
             st.dataframe(trans_df, use_container_width=True)
             current_balance = trans_df['balance_qty'].iloc[-1]
             st.success(f"📦 **Current Stock Balance for {selected_code}: {current_balance}**")
+            
+            # Print and Download options
+            col1, col2 = st.columns(2)
+            with col1:
+                components.html("<button onclick='window.print()' style='background-color:#4CAF50; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print Stock Card Report</button>", height=50)
+            with col2:
+                csv = trans_df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download Report as CSV", data=csv, file_name=f"Stock_Card_{selected_code}.csv", mime="text/csv")
         else:
             st.info("No transaction records found for this item.")
-            
-    st.info("💡 **ማስታወሻ:** ገቢና ወጪ መረጃ ለመጻፍ በቀጥታ [Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")

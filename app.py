@@ -12,7 +12,22 @@ SHEET_ID = "1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI"
 ITEMS_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=items"
 TRANS_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=transactions"
 
-# Clean item codes helper
+ETHIOPIAN_MONTHS = {
+    1: "መስከረም (Meskerem)",
+    2: "ጥቅምት (Tikimt)",
+    3: "ኅዳር (Hidar)",
+    4: "ታኅሣሥ (Tahsas)",
+    5: "ጥር (Tir)",
+    6: "የካቲት (Yekatit)",
+    7: "መጋቢት (Megabit)",
+    8: "ሚያዝያ (Miyazya)",
+    9: "ግንቦት (Ginbot)",
+    10: "ሰኔ (Sene)",
+    11: "ሐምሌ (Hamle)",
+    12: "ነሐሴ (Nehase)",
+    13: "ጳጉሜ (Pagume)"
+}
+
 def clean_code(code):
     if pd.isna(code):
         return ""
@@ -58,6 +73,27 @@ def load_transactions(item_code=None):
         df['qty_out'] = pd.to_numeric(df['qty_out'], errors='coerce').fillna(0)
         df['balance_qty'] = (df['qty_in'] - df['qty_out']).cumsum()
         
+        # Extract Month for Ethiopian Date / Standard Date parsing
+        date_col = [c for c in df.columns if 'date' in c][0] if any('date' in c for c in df.columns) else None
+        if date_col:
+            def get_month_num(d_str):
+                try:
+                    s = str(d_str).strip()
+                    # If date formatted as YYYY-MM-DD or YYYY/MM/DD
+                    parts = s.replace('/', '-').split('-')
+                    if len(parts) >= 2:
+                        m = int(parts[1])
+                        if 1 <= m <= 13:
+                            return m
+                except:
+                    pass
+                return 1
+
+            df['eth_month_num'] = df[date_col].apply(get_month_num)
+            df['eth_month'] = df['eth_month_num'].map(ETHIOPIAN_MONTHS)
+        else:
+            df['eth_month'] = "መስከረም (Meskerem)"
+
         return df
     except Exception:
         return pd.DataFrame()
@@ -67,9 +103,13 @@ st.sidebar.title("📌 Navigation")
 page = st.sidebar.radio("Go to", [
     "📦 View Registered Items", 
     "📥📤 Record Stock Movement (In/Out)", 
-    "📊 View Stock Cards"
+    "📊 View Stock Cards",
+    "📅 Monthly Stock Movement Report"
 ])
 
+# ==========================================
+# PAGE 1: VIEW REGISTERED ITEMS
+# ==========================================
 if page == "📦 View Registered Items":
     st.markdown("### 📦 Registered Items List")
     items_df = load_items()
@@ -78,10 +118,16 @@ if page == "📦 View Registered Items":
     components.html("<button onclick='window.print()' style='background-color:#008CBA; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print This Page</button>", height=50)
     st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
 
+# ==========================================
+# PAGE 2: RECORD MOVEMENT
+# ==========================================
 elif page == "📥📤 Record Stock Movement (In/Out)":
     st.markdown("### 📥📤 Stock Movement Helper")
     st.info("🔗 [በቀጥታ ወደ Google Sheet ለመሄድና ገቢ/ወጪ ለመጻፍ እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit#gid=0)")
 
+# ==========================================
+# PAGE 3: VIEW STOCK CARDS
+# ==========================================
 elif page == "📊 View Stock Cards":
     st.markdown("### 📊 Stock Card Ledger by Item")
     items_df = load_items()
@@ -98,7 +144,7 @@ elif page == "📊 View Stock Cards":
         trans_df = load_transactions(selected_code)
         
         if not trans_df.empty:
-            display_df = trans_df.drop(columns=['clean_code'], errors='ignore')
+            display_df = trans_df.drop(columns=['clean_code', 'eth_month_num', 'eth_month'], errors='ignore')
             st.dataframe(display_df, use_container_width=True)
             current_balance = trans_df['balance_qty'].iloc[-1]
             st.success(f"📦 **Current Stock Balance for Item {selected_code}: {current_balance}**")
@@ -113,3 +159,45 @@ elif page == "📊 View Stock Cards":
             st.info("No transaction records found for this item.")
             
     st.info("💡 **ማስታወሻ:** ገቢና ወጪ መረጃ ለመጻፍ በቀጥታ [Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
+
+# ==========================================
+# PAGE 4: MONTHLY REPORT (NEW)
+# ==========================================
+elif page == "📅 Monthly Stock Movement Report":
+    st.markdown("### 📅 ወርኃዊ የገቢና ወጪ ዕቃዎች ማጠቃለያ ሪፖርት")
+    
+    all_trans = load_transactions()
+    items_df = load_items()
+    
+    if all_trans.empty:
+        st.warning("ምንም የገቢና ወጪ መዝገብ አልተገኘም።")
+    else:
+        selected_month = st.selectbox("ሪፖርት የሚፈልጉበትን ወር ይምረጡ፦", list(ETHIOPIAN_MONTHS.values()))
+        
+        filtered_df = all_trans[all_trans['eth_month'] == selected_month]
+        
+        if filtered_df.empty:
+            st.info(f"በ {selected_month} ወር ምንም የተቀሰቀሰ ገቢ ወይም ወጪ የለም።")
+        else:
+            # Group by item and summarize
+            summary = filtered_df.groupby('clean_code').agg(
+                Total_Qty_In=('qty_in', 'sum'),
+                Total_Qty_Out=('qty_out', 'sum'),
+                Total_Transactions=('qty_in', 'count')
+            ).reset_index()
+            
+            # Merge with Item names
+            if not items_df.empty:
+                name_col = [c for c in items_df.columns if 'name' in c][0] if any('name' in c for c in items_df.columns) else 'clean_code'
+                summary = pd.merge(summary, items_df[['clean_code', name_col]], on='clean_code', how='left')
+                summary.rename(columns={'clean_code': 'Item Code', name_col: 'Item Name', 'Total_Qty_In': 'አጠቃላይ ገቢ (Total In)', 'Total_Qty_Out': 'አጠቃላይ ወጪ (Total Out)', 'Total_Transactions': 'የእንቅስቃሴ ብዛት'}, inplace=True)
+            
+            st.markdown(f"#### 📊 የ {selected_month} ወር አጠቃላይ እንቅስቃሴ")
+            st.dataframe(summary, use_container_width=True)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                components.html("<button onclick='window.print()' style='background-color:#4CAF50; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print Monthly Report</button>", height=50)
+            with col2:
+                csv_m = summary.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download Monthly Summary CSV", data=csv_m, file_name=f"Monthly_Report_{selected_month}.csv", mime="text/csv")

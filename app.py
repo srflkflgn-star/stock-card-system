@@ -813,6 +813,77 @@ def load_transactions(item_code=None):
         if df.empty:
             return df
 
+import streamlit as st
+import pandas as pd
+import streamlit.components.v1 as components
+
+st.set_page_config(page_title="AMG Steel Factory - Inventory", layout="wide")
+
+st.title("🏭 AMG STEEL FACTORY")
+st.subheader("Inventory Control & Multi-Item Stock Card Management System")
+
+# --- GOOGLE SHEETS SETUP ---
+SHEET_ID = "1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI"
+ITEMS_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=items"
+TRANS_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=transactions"
+
+ETHIOPIAN_MONTHS = {
+    1: "መስከረም (Meskerem)",
+    2: "ጥቅምት (Tikimt)",
+    3: "ኅዳር (Hidar)",
+    4: "ታኅሣሥ (Tahsas)",
+    5: "ጥር (Tir)",
+    6: "የካቲት (Yekatit)",
+    7: "መጋቢት (Megabit)",
+    8: "ሚያዝያ (Miyazya)",
+    9: "ግንቦት (Ginbot)",
+    10: "ሰኔ (Sene)",
+    11: "ሐምሌ (Hamle)",
+    12: "ነሐሴ (Nehase)",
+    13: "ጳጉሜ (Pagume)"
+}
+
+def clean_code(code):
+    if pd.isna(code):
+        return ""
+    val = str(code).strip()
+    if val.endswith(".0"):
+        val = val[:-2]
+    return val
+
+@st.cache_data(ttl=5)
+def load_items():
+    try:
+        df = pd.read_csv(ITEMS_URL)
+        df = df.dropna(how="all")
+        df.columns = [str(col).strip().lower() for col in df.columns]
+        
+        code_col = [c for c in df.columns if 'code' in c or 'item' in c][0]
+        df['clean_code'] = df[code_col].apply(clean_code)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=5)
+def load_transactions(item_code=None):
+    try:
+        df = pd.read_csv(TRANS_URL)
+        df = df.dropna(how="all")
+        df.columns = [str(col).strip().lower() for col in df.columns]
+        
+        if df.empty:
+            return df
+
+        code_col = [c for c in df.columns if 'code' in c or 'item' in c][0]
+        df['clean_code'] = df[code_col].apply(clean_code)
+        
+        if item_code:
+            target_code = clean_code(item_code)
+            df = df[df['clean_code'] == target_code].copy()
+        
+        if df.empty:
+            return df
+
         df['qty_in'] = pd.to_numeric(df['qty_in'], errors='coerce').fillna(0)
         df['qty_out'] = pd.to_numeric(df['qty_out'], errors='coerce').fillna(0)
         df['balance_qty'] = (df['qty_in'] - df['qty_out']).cumsum()

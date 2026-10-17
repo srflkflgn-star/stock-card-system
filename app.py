@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
@@ -10,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- HIDE ONLY STREAMLIT FOOTER & MENU (KEEP HEADER VISIBLE FOR SIDEBAR TOGGLE) ---
+# --- HIDE ONLY STREAMLIT FOOTER & MENU ---
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -70,11 +71,21 @@ def load_items():
         df = df.dropna(how="all")
         df.columns = [str(col).strip().lower() for col in df.columns]
         
-        code_cols = [c for c in df.columns if 'code' in c or 'item' in c]
+        code_cols = [c for c in df.columns if 'code' in c or 'item_code' in c]
         if code_cols:
             df['clean_code'] = df[code_cols[0]].apply(clean_code)
         else:
             df['clean_code'] = df.iloc[:, 0].apply(clean_code)
+            
+        # 🔍 Find Item Name Column dynamically
+        name_cols = [c for c in df.columns if ('name' in c or 'desc' in c or 'item' in c) and c != 'clean_code' and c not in code_cols]
+        if name_cols:
+            df['item_display_name'] = df[name_cols[0]].astype(str)
+        elif len(df.columns) > 1:
+            df['item_display_name'] = df.iloc[:, 1].astype(str)
+        else:
+            df['item_display_name'] = df['clean_code']
+            
         return df
     except Exception as e:
         st.error(f"Error loading items: {e}")
@@ -171,11 +182,9 @@ if page == "📅 Monthly Stock Movement Report":
             ).reset_index()
             
             name_col = 'clean_code'
-            if not items_df.empty:
-                name_cols = [c for c in items_df.columns if 'name' in c or 'item' in c or 'desc' in c]
-                if name_cols:
-                    name_col = name_cols[0]
-                    summary = pd.merge(summary, items_df[['clean_code', name_col]], on='clean_code', how='left')
+            if not items_df.empty and 'item_display_name' in items_df.columns:
+                summary = pd.merge(summary, items_df[['clean_code', 'item_display_name']], on='clean_code', how='left')
+                name_col = 'item_display_name'
             if name_col not in summary.columns:
                 summary['item_name'] = summary['clean_code']
                 name_col = 'item_name'
@@ -246,10 +255,7 @@ elif page == "📊 View Stock Cards":
     if items_df.empty:
         st.warning("No items found.")
     else:
-        name_cols = [c for c in items_df.columns if 'name' in c or 'item' in c or 'desc' in c]
-        name_col = name_cols[0] if name_cols else 'clean_code'
-        
-        item_list = [f"{row['clean_code']} - {row[name_col]}" for _, row in items_df.iterrows() if str(row['clean_code']).strip() != ""]
+        item_list = [f"{row['clean_code']} - {row['item_display_name']}" for _, row in items_df.iterrows() if str(row['clean_code']).strip() != ""]
         if item_list:
             selected_item_str = st.selectbox("Select Item to View Stock Card", item_list, key="stock_card_selectbox")
             selected_code = selected_item_str.split(" - ")[0]
@@ -289,5 +295,4 @@ elif page == "📦 View Registered Items":
 # PAGE 4: RECORD MOVEMENT
 elif page == "📥📤 Record Stock Movement (In/Out)":
     st.markdown("### 📥📤 Stock Movement Helper")
-    st.info("🔗 [በቀጥታ ወደ Google Sheet ለመሄድና ገቢ/ወጪ ለመጻፍ እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit#gid=0)")
-    
+    st.info("🔗 [በቀጥታ ወደ Google Sheet ለመሄድና ገቢ/ወጪ ለመጻፍ እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit#gid=0)")        

@@ -2,10 +2,25 @@ import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="AMG Steel Factory - Inventory", layout="wide")
+# --- PAGE CONFIGURATION (TITLE & LOGO) ---
+st.set_page_config(
+    page_title="AMG Steel Factory - Inventory Management",
+    page_icon="🏭",
+    layout="wide"
+)
 
-st.title("🏭 AMG STEEL FACTORY")
-st.subheader("Inventory Control & Multi-Item Stock Card Management System")
+# --- HEADER WITH AMG LOGO ---
+col_logo, col_title = st.columns([1, 4])
+
+with col_logo:
+    try:
+        st.image("logo.png", width=140)
+    except:
+        st.write("🏭")
+
+with col_title:
+    st.title("🏭 AMG STEEL FACTORY")
+    st.subheader("Inventory Control & Multi-Item Stock Card Management System")
 
 # --- GOOGLE SHEETS SETUP ---
 SHEET_ID = "1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI"
@@ -36,20 +51,24 @@ def clean_code(code):
         val = val[:-2]
     return val
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=2)
 def load_items():
     try:
         df = pd.read_csv(ITEMS_URL)
         df = df.dropna(how="all")
         df.columns = [str(col).strip().lower() for col in df.columns]
         
-        code_col = [c for c in df.columns if 'code' in c or 'item' in c][0]
-        df['clean_code'] = df[code_col].apply(clean_code)
+        code_cols = [c for c in df.columns if 'code' in c or 'item' in c]
+        if code_cols:
+            df['clean_code'] = df[code_cols[0]].apply(clean_code)
+        else:
+            df['clean_code'] = df.iloc[:, 0].apply(clean_code)
         return df
-    except Exception:
+    except Exception as e:
+        st.error(f"Error loading items: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=2)
 def load_transactions(item_code=None):
     try:
         df = pd.read_csv(TRANS_URL)
@@ -59,8 +78,11 @@ def load_transactions(item_code=None):
         if df.empty:
             return df
 
-        code_col = [c for c in df.columns if 'code' in c or 'item' in c][0]
-        df['clean_code'] = df[code_col].apply(clean_code)
+        code_cols = [c for c in df.columns if 'code' in c or 'item' in c]
+        if code_cols:
+            df['clean_code'] = df[code_cols[0]].apply(clean_code)
+        else:
+            df['clean_code'] = df.iloc[:, 0].apply(clean_code)
         
         if item_code:
             target_code = clean_code(item_code)
@@ -69,12 +91,15 @@ def load_transactions(item_code=None):
         if df.empty:
             return df
 
-        df['qty_in'] = pd.to_numeric(df['qty_in'], errors='coerce').fillna(0)
-        df['qty_out'] = pd.to_numeric(df['qty_out'], errors='coerce').fillna(0)
+        in_col = [c for c in df.columns if 'in' in c or 'rec' in c]
+        out_col = [c for c in df.columns if 'out' in c or 'issue' in c]
+
+        df['qty_in'] = pd.to_numeric(df[in_col[0]], errors='coerce').fillna(0) if in_col else 0
+        df['qty_out'] = pd.to_numeric(df[out_col[0]], errors='coerce').fillna(0) if out_col else 0
         df['balance_qty'] = (df['qty_in'] - df['qty_out']).cumsum()
         
-        date_col = [c for c in df.columns if 'date' in c][0] if any('date' in c for c in df.columns) else None
-        if date_col:
+        date_cols = [c for c in df.columns if 'date' in c or 'ቀን' in c]
+        if date_cols:
             def get_month_num(d_str):
                 try:
                     s = str(d_str).strip()
@@ -87,13 +112,14 @@ def load_transactions(item_code=None):
                     pass
                 return 1
 
-            df['eth_month_num'] = df[date_col].apply(get_month_num)
+            df['eth_month_num'] = df[date_cols[0]].apply(get_month_num)
             df['eth_month'] = df['eth_month_num'].map(ETHIOPIAN_MONTHS)
         else:
             df['eth_month'] = "መስከረም (Meskerem)"
 
         return df
-    except Exception:
+    except Exception as e:
+        st.error(f"Error loading transactions: {e}")
         return pd.DataFrame()
 
 # Navigation
@@ -113,7 +139,10 @@ page = st.sidebar.radio(
 if page == "📦 View Registered Items":
     st.markdown("### 📦 Registered Items List")
     items_df = load_items()
-    st.dataframe(items_df, use_container_width=True)
+    if not items_df.empty:
+        st.dataframe(items_df, use_container_width=True)
+    else:
+        st.warning("No registered items found in Google Sheet.")
     components.html("<button onclick='window.print()' style='background-color:#008CBA; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print This Page</button>", height=50)
     st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
 
@@ -130,27 +159,32 @@ elif page == "📊 View Stock Cards":
     if items_df.empty:
         st.warning("No items found.")
     else:
-        name_col = [c for c in items_df.columns if 'name' in c][0] if any('name' in c for c in items_df.columns) else 'clean_code'
-        item_list = [f"{row['clean_code']} - {row[name_col]}" for _, row in items_df.iterrows() if row['clean_code'] != ""]
-        selected_item_str = st.selectbox("Select Item to View Stock Card", item_list, key="stock_card_selectbox")
-        selected_code = selected_item_str.split(" - ")[0]
+        name_cols = [c for c in items_df.columns if 'name' in c or 'item' in c or 'desc' in c]
+        name_col = name_cols[0] if name_cols else 'clean_code'
         
-        trans_df = load_transactions(selected_code)
-        
-        if not trans_df.empty:
-            display_df = trans_df.drop(columns=['clean_code', 'eth_month_num', 'eth_month'], errors='ignore')
-            st.dataframe(display_df, use_container_width=True)
-            current_balance = trans_df['balance_qty'].iloc[-1]
-            st.success(f"📦 **Current Stock Balance for Item {selected_code}: {current_balance}**")
+        item_list = [f"{row['clean_code']} - {row[name_col]}" for _, row in items_df.iterrows() if str(row['clean_code']).strip() != ""]
+        if item_list:
+            selected_item_str = st.selectbox("Select Item to View Stock Card", item_list, key="stock_card_selectbox")
+            selected_code = selected_item_str.split(" - ")[0]
             
-            col1, col2 = st.columns(2)
-            with col1:
-                components.html("<button onclick='window.print()' style='background-color:#4CAF50; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print Stock Card Report</button>", height=50)
-            with col2:
-                csv = display_df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Download Report as CSV", data=csv, file_name=f"Stock_Card_{selected_code}.csv", mime="text/csv", key="download_stock_card")
+            trans_df = load_transactions(selected_code)
+            
+            if not trans_df.empty:
+                display_df = trans_df.drop(columns=['clean_code', 'eth_month_num', 'eth_month'], errors='ignore')
+                st.dataframe(display_df, use_container_width=True)
+                current_balance = trans_df['balance_qty'].iloc[-1]
+                st.success(f"📦 **Current Stock Balance for Item {selected_code}: {current_balance}**")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    components.html("<button onclick='window.print()' style='background-color:#4CAF50; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print Stock Card Report</button>", height=50)
+                with col2:
+                    csv = display_df.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Download Report as CSV", data=csv, file_name=f"Stock_Card_{selected_code}.csv", mime="text/csv", key="download_stock_card")
+            else:
+                st.info("No transaction records found for this item.")
         else:
-            st.info("No transaction records found for this item.")
+            st.warning("No item codes detected in the items sheet.")
             
     st.info("💡 **ማስታወሻ:** ገቢና ወጪ መረጃ ለመጻፍ በቀጥታ [Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
 
@@ -179,10 +213,13 @@ elif page == "📅 Monthly Stock Movement Report":
             
             name_col = 'clean_code'
             if not items_df.empty:
-                name_col = [c for c in items_df.columns if 'name' in c][0] if any('name' in c for c in items_df.columns) else 'clean_code'
-                summary = pd.merge(summary, items_df[['clean_code', name_col]], on='clean_code', how='left')
-            else:
+                name_cols = [c for c in items_df.columns if 'name' in c or 'item' in c or 'desc' in c]
+                if name_cols:
+                    name_col = name_cols[0]
+                    summary = pd.merge(summary, items_df[['clean_code', name_col]], on='clean_code', how='left')
+            if name_col not in summary.columns:
                 summary['item_name'] = summary['clean_code']
+                name_col = 'item_name'
 
             total_in_all = summary['Total_Qty_In'].sum()
             total_out_all = summary['Total_Qty_Out'].sum()
@@ -241,5 +278,5 @@ elif page == "📅 Monthly Stock Movement Report":
             with col2:
                 csv_m = display_summary.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Report as CSV", data=csv_m, file_name=f"Monthly_Report_{selected_month}.csv", mime="text/csv", key="download_monthly_summary")
-    
-                
+        
+        

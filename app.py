@@ -2,41 +2,37 @@ import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
 
-# --- PAGE CONFIGURATION ---
+# --- PAGE CONFIGURATION (TITLE, LOGO & EXPANDED SIDEBAR) ---
 st.set_page_config(
     page_title="AMG Steel Factory - Inventory Control",
     page_icon="logo.png",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# --- HIDE ONLY STREAMLIT FOOTER & MENU (KEEP HEADER VISIBLE FOR SIDEBAR TOGGLE) ---
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .viewerBadge_container__1s5D3 {display: none !important;}
+    .styles_viewerBadge__1y-oN {display: none !important;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # --- HEADER WITH AMG LOGO ---
 col_logo, col_title = st.columns([1, 4])
 
 with col_logo:
     try:
-        st.image("logo.png", width=130)
+        st.image("logo.png", width=140)
     except:
         st.write("🏭")
 
 with col_title:
     st.title("🏭 AMG STEEL FACTORY")
     st.subheader("Inventory Control & Multi-Item Stock Card Management System")
-
-st.markdown("---")
-
-# --- TOP NAVIGATION MENU (በቀላሉ በስልክ ለመቀየር) ---
-page = st.selectbox(
-    "📌 **የሚፈልጉትን ገጽ ይምረጡ (Select Page):**", 
-    [
-        "📅 Monthly Stock Movement Report & Analysis (ወርኃዊ ሪፖርትና የጽሁፍ ትንተና)",
-        "📊 View Stock Cards (የዕቃዎች ስቶክ ካርድ)",
-        "📦 View Registered Items (የተመዘገቡ ዕቃዎች ዝርዝር)", 
-        "📥📤 Record Stock Movement (In/Out)"
-    ],
-    key="top_navigation_selectbox"
-)
-
-st.markdown("---")
 
 # --- GOOGLE SHEETS SETUP ---
 SHEET_ID = "1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI"
@@ -138,9 +134,21 @@ def load_transactions(item_code=None):
         st.error(f"Error loading transactions: {e}")
         return pd.DataFrame()
 
+# --- SIDEBAR NAVIGATION BAR ---
+st.sidebar.title("📌 Navigation Bar")
+page = st.sidebar.radio(
+    "Go to", 
+    [
+        "📅 Monthly Stock Movement Report",
+        "📊 View Stock Cards",
+        "📦 View Registered Items", 
+        "📥📤 Record Stock Movement (In/Out)"
+    ],
+    key="main_navigation_radio"
+)
 
-# 1. MONTHLY REPORT & TEXT ANALYSIS (DEFAULT PAGE)
-if "Monthly Stock Movement Report" in page:
+# PAGE 1: MONTHLY REPORT & TEXT ANALYSIS
+if page == "📅 Monthly Stock Movement Report":
     st.markdown("### 📅 ወርኃዊ የገቢና ወጪ ዕቃዎች ማጠቃለያ እና የጽሁፍ ትንተና ሪፖርት")
     
     all_trans = load_transactions()
@@ -230,8 +238,8 @@ if "Monthly Stock Movement Report" in page:
                 csv_m = display_summary.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Report as CSV", data=csv_m, file_name=f"Monthly_Report_{selected_month}.csv", mime="text/csv", key="download_monthly_summary")
 
-# 2. VIEW STOCK CARDS
-elif "View Stock Cards" in page:
+# PAGE 2: VIEW STOCK CARDS
+elif page == "📊 View Stock Cards":
     st.markdown("### 📊 Stock Card Ledger by Item")
     items_df = load_items()
     
@@ -267,8 +275,8 @@ elif "View Stock Cards" in page:
             
     st.info("💡 **ማስታወሻ:** ገቢና ወጪ መረጃ ለመጻፍ በቀጥታ [Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
 
-# 3. VIEW REGISTERED ITEMS
-elif "View Registered Items" in page:
+# PAGE 3: VIEW REGISTERED ITEMS
+elif page == "📦 View Registered Items":
     st.markdown("### 📦 Registered Items List")
     items_df = load_items()
     if not items_df.empty:
@@ -278,7 +286,8 @@ elif "View Registered Items" in page:
     components.html("<button onclick='window.print()' style='background-color:#008CBA; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print This Page</button>", height=50)
     st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
 
-# 4. RECORD MOVEMENT
-elif "Record Stock Movement" in page:
+# PAGE 4: RECORD MOVEMENT
+elif page == "📥📤 Record Stock Movement (In/Out)":
     st.markdown("### 📥📤 Stock Movement Helper")
     st.info("🔗 [በቀጥታ ወደ Google Sheet ለመሄድና ገቢ/ወጪ ለመጻፍ እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit#gid=0)")
+    

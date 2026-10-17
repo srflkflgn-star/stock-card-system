@@ -2,39 +2,41 @@ import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
 
-# --- PAGE CONFIGURATION (TITLE, LOGO & ALWAYS OPEN SIDEBAR) ---
+# --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="AMG Steel Factory - Inventory Control",
     page_icon="logo.png",
-    layout="wide",
-    initial_sidebar_state="expanded"  # ማውጫው በስልክ ላይ ሁልጊዜ ተከፍቶ እንዲታይ ያደርጋል
+    layout="wide"
 )
-
-# --- HIDE STREAMLIT BRANDING / WATERMARKS ---
-hide_streamlit_style = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stApp > header {visibility: hidden;}
-    .viewerBadge_container__1s5D3 {display: none !important;}
-    .styles_viewerBadge__1y-oN {display: none !important;}
-    </style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # --- HEADER WITH AMG LOGO ---
 col_logo, col_title = st.columns([1, 4])
 
 with col_logo:
     try:
-        st.image("logo.png", width=140)
+        st.image("logo.png", width=130)
     except:
         st.write("🏭")
 
 with col_title:
     st.title("🏭 AMG STEEL FACTORY")
     st.subheader("Inventory Control & Multi-Item Stock Card Management System")
+
+st.markdown("---")
+
+# --- TOP NAVIGATION MENU (በቀላሉ በስልክ ለመቀየር) ---
+page = st.selectbox(
+    "📌 **የሚፈልጉትን ገጽ ይምረጡ (Select Page):**", 
+    [
+        "📅 Monthly Stock Movement Report & Analysis (ወርኃዊ ሪፖርትና የጽሁፍ ትንተና)",
+        "📊 View Stock Cards (የዕቃዎች ስቶክ ካርድ)",
+        "📦 View Registered Items (የተመዘገቡ ዕቃዎች ዝርዝር)", 
+        "📥📤 Record Stock Movement (In/Out)"
+    ],
+    key="top_navigation_selectbox"
+)
+
+st.markdown("---")
 
 # --- GOOGLE SHEETS SETUP ---
 SHEET_ID = "1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI"
@@ -136,74 +138,9 @@ def load_transactions(item_code=None):
         st.error(f"Error loading transactions: {e}")
         return pd.DataFrame()
 
-# Navigation
-st.sidebar.title("📌 Navigation")
-page = st.sidebar.radio(
-    "Go to", 
-    [
-        "📦 View Registered Items", 
-        "📥📤 Record Stock Movement (In/Out)", 
-        "📊 View Stock Cards",
-        "📅 Monthly Stock Movement Report"
-    ],
-    key="main_navigation_radio"
-)
 
-# PAGE 1: VIEW REGISTERED ITEMS
-if page == "📦 View Registered Items":
-    st.markdown("### 📦 Registered Items List")
-    items_df = load_items()
-    if not items_df.empty:
-        st.dataframe(items_df, use_container_width=True)
-    else:
-        st.warning("No registered items found in Google Sheet.")
-    components.html("<button onclick='window.print()' style='background-color:#008CBA; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print This Page</button>", height=50)
-    st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
-
-# PAGE 2: RECORD MOVEMENT
-elif page == "📥📤 Record Stock Movement (In/Out)":
-    st.markdown("### 📥📤 Stock Movement Helper")
-    st.info("🔗 [በቀጥታ ወደ Google Sheet ለመሄድና ገቢ/ወጪ ለመጻፍ እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit#gid=0)")
-
-# PAGE 3: VIEW STOCK CARDS
-elif page == "📊 View Stock Cards":
-    st.markdown("### 📊 Stock Card Ledger by Item")
-    items_df = load_items()
-    
-    if items_df.empty:
-        st.warning("No items found.")
-    else:
-        name_cols = [c for c in items_df.columns if 'name' in c or 'item' in c or 'desc' in c]
-        name_col = name_cols[0] if name_cols else 'clean_code'
-        
-        item_list = [f"{row['clean_code']} - {row[name_col]}" for _, row in items_df.iterrows() if str(row['clean_code']).strip() != ""]
-        if item_list:
-            selected_item_str = st.selectbox("Select Item to View Stock Card", item_list, key="stock_card_selectbox")
-            selected_code = selected_item_str.split(" - ")[0]
-            
-            trans_df = load_transactions(selected_code)
-            
-            if not trans_df.empty:
-                display_df = trans_df.drop(columns=['clean_code', 'eth_month_num', 'eth_month'], errors='ignore')
-                st.dataframe(display_df, use_container_width=True)
-                current_balance = trans_df['balance_qty'].iloc[-1]
-                st.success(f"📦 **Current Stock Balance for Item {selected_code}: {current_balance}**")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    components.html("<button onclick='window.print()' style='background-color:#4CAF50; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print Stock Card Report</button>", height=50)
-                with col2:
-                    csv = display_df.to_csv(index=False).encode('utf-8')
-                    st.download_button("📥 Download Report as CSV", data=csv, file_name=f"Stock_Card_{selected_code}.csv", mime="text/csv", key="download_stock_card")
-            else:
-                st.info("No transaction records found for this item.")
-        else:
-            st.warning("No item codes detected in the items sheet.")
-            
-    st.info("💡 **ማስታወሻ:** ገቢና ወጪ መረጃ ለመጻፍ በቀጥታ [Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
-
-# PAGE 4: MONTHLY REPORT & TEXT ANALYSIS
-elif page == "📅 Monthly Stock Movement Report":
+# 1. MONTHLY REPORT & TEXT ANALYSIS (DEFAULT PAGE)
+if "Monthly Stock Movement Report" in page:
     st.markdown("### 📅 ወርኃዊ የገቢና ወጪ ዕቃዎች ማጠቃለያ እና የጽሁፍ ትንተና ሪፖርት")
     
     all_trans = load_transactions()
@@ -292,3 +229,56 @@ elif page == "📅 Monthly Stock Movement Report":
             with col2:
                 csv_m = display_summary.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Report as CSV", data=csv_m, file_name=f"Monthly_Report_{selected_month}.csv", mime="text/csv", key="download_monthly_summary")
+
+# 2. VIEW STOCK CARDS
+elif "View Stock Cards" in page:
+    st.markdown("### 📊 Stock Card Ledger by Item")
+    items_df = load_items()
+    
+    if items_df.empty:
+        st.warning("No items found.")
+    else:
+        name_cols = [c for c in items_df.columns if 'name' in c or 'item' in c or 'desc' in c]
+        name_col = name_cols[0] if name_cols else 'clean_code'
+        
+        item_list = [f"{row['clean_code']} - {row[name_col]}" for _, row in items_df.iterrows() if str(row['clean_code']).strip() != ""]
+        if item_list:
+            selected_item_str = st.selectbox("Select Item to View Stock Card", item_list, key="stock_card_selectbox")
+            selected_code = selected_item_str.split(" - ")[0]
+            
+            trans_df = load_transactions(selected_code)
+            
+            if not trans_df.empty:
+                display_df = trans_df.drop(columns=['clean_code', 'eth_month_num', 'eth_month'], errors='ignore')
+                st.dataframe(display_df, use_container_width=True)
+                current_balance = trans_df['balance_qty'].iloc[-1]
+                st.success(f"📦 **Current Stock Balance for Item {selected_code}: {current_balance}**")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    components.html("<button onclick='window.print()' style='background-color:#4CAF50; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print Stock Card Report</button>", height=50)
+                with col2:
+                    csv = display_df.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Download Report as CSV", data=csv, file_name=f"Stock_Card_{selected_code}.csv", mime="text/csv", key="download_stock_card")
+            else:
+                st.info("No transaction records found for this item.")
+        else:
+            st.warning("No item codes detected in the items sheet.")
+            
+    st.info("💡 **ማስታወሻ:** ገቢና ወጪ መረጃ ለመጻፍ በቀጥታ [Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
+
+# 3. VIEW REGISTERED ITEMS
+elif "View Registered Items" in page:
+    st.markdown("### 📦 Registered Items List")
+    items_df = load_items()
+    if not items_df.empty:
+        st.dataframe(items_df, use_container_width=True)
+    else:
+        st.warning("No registered items found in Google Sheet.")
+    components.html("<button onclick='window.print()' style='background-color:#008CBA; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer;'>🖨️ Print This Page</button>", height=50)
+    st.info("💡 **ማስታወሻ:** አዲስ ዕቃ ለመመዝገብ በቀጥታ [የሁሉንም መረጃዎች Google Sheet ለመክፈት እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit)።")
+
+# 4. RECORD MOVEMENT
+elif "Record Stock Movement" in page:
+    st.markdown("### 📥📤 Stock Movement Helper")
+    st.info("🔗 [በቀጥታ ወደ Google Sheet ለመሄድና ገቢ/ወጪ ለመጻፍ እዚህ ይጫኑ](https://docs.google.com/spreadsheets/d/1zC7Wuzlwm-LKUxzFaIe83jLHlfwU9mro8hq2S9HM0YI/edit#gid=0)")
